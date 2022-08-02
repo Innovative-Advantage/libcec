@@ -48,6 +48,16 @@
 #if defined(HAVE_CURSES_API)
   #include "curses/CursesControl.h"
 #endif
+#include <websocketpp/config/asio_no_tls.hpp>
+#include <websocketpp/server.hpp>
+
+typedef websocketpp::server<websocketpp::config::asio> server;
+
+using websocketpp::lib::placeholders::_1;
+using websocketpp::lib::placeholders::_2;
+using websocketpp::lib::bind;
+
+typedef server::message_ptr message_ptr;
 
 using namespace CEC;
 using namespace P8PLATFORM;
@@ -1252,6 +1262,21 @@ bool ProcessCommandLineArguments(int argc, char *argv[])
   return bReturn;
 }
 
+void on_message(server* s, websocketpp::connection_hdl hdl, message_ptr msg) {
+  PrintToStdOut("message received");
+
+  if (msg->get_payload() == "stop-listening") {
+    s->stop_listening();
+    return;
+  }
+
+  try {
+    s->send(hdl, msg->get_payload(), msg->get_opcode());
+  } catch (websocketpp::exception const & e) {
+    PrintToStdOut("Error failed from %s", e.what());
+  }
+}
+
 void sighandler(int iSignal)
 {
   PrintToStdOut("signal caught: %d - exiting", iSignal);
@@ -1260,6 +1285,8 @@ void sighandler(int iSignal)
 
 int main (int argc, char *argv[])
 {
+  server websocket_server;
+
   if (signal(SIGINT, sighandler) == SIG_ERR)
   {
     PrintToStdOut("can't register sighandler");
@@ -1363,6 +1390,26 @@ int main (int argc, char *argv[])
 
   if (!g_bSingleCommand)
     PrintToStdOut("waiting for input");
+
+  // Create the websocket server
+  try {
+    websocket_server.set_access_channels(websocketpp::log::alevel::all);
+    websocket_server.clear_access_channels(websocketpp::log::alevel::frame_payload);
+
+    websocket_server.init_asio();
+
+    websocket_server.set_message_handler(bind(&on_message, &websocket_server,::_1,::_2));
+
+    websocket_server.listen(9002);
+
+    websocket_server.start_accept();
+
+    websocket_server.run();
+  } catch (websocketpp::exception const & e) {
+    PrintToStdOut(e.what());
+  } catch (...) {
+    PrintToStdOut("unexpected exception");
+  }
 
   while (!g_bExit && !g_bHardExit)
   {

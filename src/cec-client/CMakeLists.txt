@@ -74,6 +74,7 @@ endif()
 
 include_directories(${p8-platform_INCLUDE_DIRS}
                     ${PROJECT_SOURCE_DIR}
+                    ${PROJECT_SOURCE_DIR}/websocketpp
                     ${PROJECT_SOURCE_DIR}/../../include)
 
 # write env.h
