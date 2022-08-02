@@ -47,6 +47,7 @@ ltmain.sh
 Makefile
 Makefile.in
 missing
+tags
 config.h
 config.h.in
 config.h.in~
