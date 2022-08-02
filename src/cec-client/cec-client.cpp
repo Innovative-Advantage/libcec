@@ -66,6 +66,8 @@ using namespace P8PLATFORM;
 
 static void PrintToStdOut(const char *strFormat, ...);
 
+server                g_websocket_server;
+
 ICECCallbacks         g_callbacks;
 libcec_configuration  g_config;
 int                   g_cecLogLevel(-1);
@@ -1280,13 +1282,12 @@ void on_message(server* s, websocketpp::connection_hdl hdl, message_ptr msg) {
 void sighandler(int iSignal)
 {
   PrintToStdOut("signal caught: %d - exiting", iSignal);
+  g_websocket_server.stop();
   g_bExit = 1;
 }
 
 int main (int argc, char *argv[])
 {
-  server websocket_server;
-
   if (signal(SIGINT, sighandler) == SIG_ERR)
   {
     PrintToStdOut("can't register sighandler");
@@ -1393,18 +1394,18 @@ int main (int argc, char *argv[])
 
   // Create the websocket server
   try {
-    websocket_server.set_access_channels(websocketpp::log::alevel::all);
-    websocket_server.clear_access_channels(websocketpp::log::alevel::frame_payload);
+    g_websocket_server.set_access_channels(websocketpp::log::alevel::all);
+    g_websocket_server.clear_access_channels(websocketpp::log::alevel::frame_payload);
 
-    websocket_server.init_asio();
+    g_websocket_server.init_asio();
 
-    websocket_server.set_message_handler(bind(&on_message, &websocket_server,::_1,::_2));
+    g_websocket_server.set_message_handler(bind(&on_message, &g_websocket_server,::_1,::_2));
 
-    websocket_server.listen(9002);
+    g_websocket_server.listen(9002);
 
-    websocket_server.start_accept();
+    g_websocket_server.start_accept();
 
-    websocket_server.run();
+    g_websocket_server.run();
   } catch (websocketpp::exception const & e) {
     PrintToStdOut(e.what());
   } catch (...) {
