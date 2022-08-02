@@ -7,3 +7,6 @@
 [submodule "src/dotnet"]
 	path = src/dotnet
 	url = https://github.com/Pulse-Eight/cec-dotnet.git
+[submodule "src/cec-client/websocketpp"]
+	path = src/cec-client/websocketpp
+	url = https://github.com/zaphoyd/websocketpp.git
