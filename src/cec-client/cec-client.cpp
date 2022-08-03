@@ -38,6 +38,7 @@
 #include <fcntl.h>
 #include <iostream>
 #include <fstream>
+#include <set>
 #include <string>
 #include <sstream>
 #include <signal.h>
@@ -53,9 +54,11 @@
 
 typedef websocketpp::server<websocketpp::config::asio> server;
 
+using websocketpp::connection_hdl;
 using websocketpp::lib::placeholders::_1;
 using websocketpp::lib::placeholders::_2;
 using websocketpp::lib::bind;
+typedef std::set<connection_hdl,std::owner_less<connection_hdl>> con_list;
 
 typedef server::message_ptr message_ptr;
 
@@ -65,8 +68,6 @@ using namespace P8PLATFORM;
 #include "cecloader.h"
 
 static void PrintToStdOut(const char *strFormat, ...);
-
-server                g_websocket_server;
 
 ICECCallbacks         g_callbacks;
 libcec_configuration  g_config;
@@ -113,6 +114,56 @@ public:
 private:
   CReconnect(void) {}
 };
+
+class our_server {
+public:
+  our_server() {
+    m_server.init_asio();
+
+    m_server.set_open_handler(bind(&our_server::on_open, this, ::_1));
+    m_server.set_close_handler(bind(&our_server::on_close, this, ::_1));
+    m_server.set_message_handler(bind(&our_server::on_message, this, ::_1, ::_2));
+  }
+
+  void run(uint16_t port) {
+    m_server.listen(port);
+    m_server.start_accept();
+
+    try {
+      m_server.run();
+    } catch (const std::exception & e) {
+      std::cout << e.what() << std::endl;
+    }
+  }
+
+  void on_open(connection_hdl hdl) {
+    m_connections.insert(hdl);
+  }
+
+  void on_close(connection_hdl hdl) {
+    m_connections.erase(hdl);
+  }
+
+  void on_message(connection_hdl hdl, server::message_ptr mesg) {
+  }
+
+  void send_message(const char *msg) {
+    websocketpp::lib::error_code ec;
+
+    for (auto it : m_connections)
+      m_server.send(it, msg, websocketpp::frame::opcode::text,ec);
+  }
+
+  void stop() {
+    m_server.stop();
+  }
+
+private:
+  server m_server;
+  con_list m_connections;
+};
+
+our_server *g_our_server;
 
 static void PrintToStdOut(const char *strFormat, ...)
 {
@@ -231,8 +282,18 @@ void CecLogMessage(void *UNUSED(cbParam), const cec_log_message* message)
   }
 }
 
-void CecKeyPress(void *UNUSED(cbParam), const cec_keypress* UNUSED(key))
+void CecKeyPress(void *UNUSED(cbParam), const cec_keypress* key)
 {
+  switch (key->keycode) {
+    case CEC_USER_CONTROL_CODE_VOLUME_UP:
+      g_our_server->send_message("vol_up");
+      break;
+    case CEC_USER_CONTROL_CODE_VOLUME_DOWN:
+      g_our_server->send_message("vol_down");
+      break;
+    default:
+      break;
+  }
 }
 
 void CecCommand(void *UNUSED(cbParam), const cec_command* UNUSED(command))
@@ -1264,25 +1325,10 @@ bool ProcessCommandLineArguments(int argc, char *argv[])
   return bReturn;
 }
 
-void on_message(server* s, websocketpp::connection_hdl hdl, message_ptr msg) {
-  PrintToStdOut("message received");
-
-  if (msg->get_payload() == "stop-listening") {
-    s->stop_listening();
-    return;
-  }
-
-  try {
-    s->send(hdl, msg->get_payload(), msg->get_opcode());
-  } catch (websocketpp::exception const & e) {
-    PrintToStdOut("Error failed from %s", e.what());
-  }
-}
-
 void sighandler(int iSignal)
 {
   PrintToStdOut("signal caught: %d - exiting", iSignal);
-  g_websocket_server.stop();
+  g_our_server->stop();
   g_bExit = 1;
 }
 
@@ -1392,25 +1438,9 @@ int main (int argc, char *argv[])
   if (!g_bSingleCommand)
     PrintToStdOut("waiting for input");
 
-  // Create the websocket server
-  try {
-    g_websocket_server.set_access_channels(websocketpp::log::alevel::all);
-    g_websocket_server.clear_access_channels(websocketpp::log::alevel::frame_payload);
-
-    g_websocket_server.init_asio();
-
-    g_websocket_server.set_message_handler(bind(&on_message, &g_websocket_server,::_1,::_2));
-
-    g_websocket_server.listen(9002);
-
-    g_websocket_server.start_accept();
-
-    g_websocket_server.run();
-  } catch (websocketpp::exception const & e) {
-    PrintToStdOut(e.what());
-  } catch (...) {
-    PrintToStdOut("unexpected exception");
-  }
+  our_server ourServer;
+  g_our_server = &ourServer;
+  ourServer.run(9002);
 
   while (!g_bExit && !g_bHardExit)
   {
