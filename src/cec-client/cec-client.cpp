@@ -85,6 +85,8 @@ ICECAdapter*          g_parser;
 bool                  g_cursesEnable(false);
 CCursesControl        g_cursesControl("1", "0");
 #endif
+bool                  g_shouldStartWebsocket = false;
+int                   g_websocketPort = 9002;
 
 class CReconnect : public P8PLATFORM::CThread
 {
@@ -284,15 +286,18 @@ void CecLogMessage(void *UNUSED(cbParam), const cec_log_message* message)
 
 void CecKeyPress(void *UNUSED(cbParam), const cec_keypress* key)
 {
-  switch (key->keycode) {
-    case CEC_USER_CONTROL_CODE_VOLUME_UP:
-      g_our_server->send_message("vol_up");
-      break;
-    case CEC_USER_CONTROL_CODE_VOLUME_DOWN:
-      g_our_server->send_message("vol_down");
-      break;
-    default:
-      break;
+  if (g_shouldStartWebsocket)
+  {
+    switch (key->keycode) {
+      case CEC_USER_CONTROL_CODE_VOLUME_UP:
+        g_our_server->send_message("vol_up");
+        break;
+      case CEC_USER_CONTROL_CODE_VOLUME_DOWN:
+        g_our_server->send_message("vol_down");
+        break;
+      default:
+        break;
+    }
   }
 }
 
@@ -384,6 +389,8 @@ void ShowHelpCommandLine(const char* strExec)
       "  -o --osd-name {osd name}    Use a custom osd name." << std::endl <<
       "  -m --monitor                Start a monitor-only client." << std::endl <<
       "  -i --info                   Shows information about how libCEC was compiled." << std::endl <<
+      "  --websocket                 Start a websocket to relay messages." << std::endl <<
+      "  --ws-port {port}            Use different websocket port (default 9002)." << std::endl <<
       "  [COM PORT]                  The com port to connect to. If no COM" << std::endl <<
       "                              port is given, the client tries to connect to the" << std::endl <<
       "                              first device that is detected." << std::endl <<
@@ -1315,6 +1322,21 @@ bool ProcessCommandLineArguments(int argc, char *argv[])
         ++iArgPtr;
       }
 #endif
+      else if (!strcmp(argv[iArgPtr], "--websocket"))
+      {
+        g_shouldStartWebsocket = true;
+        ++iArgPtr;
+      }
+      else if (!strcmp(argv[iArgPtr], "--ws-port"))
+      {
+        if (argc >= iArgPtr + 2)
+        {
+          g_websocketPort = atoi(argv[iArgPtr + 1]);
+          std::cout << "using websocket port '" << g_websocketPort << "'" << std::endl;
+          ++iArgPtr;
+        }
+        ++iArgPtr;
+      }
       else
       {
         g_strPort = argv[iArgPtr++];
@@ -1328,7 +1350,9 @@ bool ProcessCommandLineArguments(int argc, char *argv[])
 void sighandler(int iSignal)
 {
   PrintToStdOut("signal caught: %d - exiting", iSignal);
-  g_our_server->stop();
+  if (g_shouldStartWebsocket) {
+    g_our_server->stop();
+  }
   g_bExit = 1;
 }
 
@@ -1438,9 +1462,12 @@ int main (int argc, char *argv[])
   if (!g_bSingleCommand)
     PrintToStdOut("waiting for input");
 
-  our_server ourServer;
-  g_our_server = &ourServer;
-  ourServer.run(9002);
+  if (g_shouldStartWebsocket)
+  {
+    our_server ourServer;
+    g_our_server = &ourServer;
+    ourServer.run(g_websocketPort);
+  }
 
   while (!g_bExit && !g_bHardExit)
   {
