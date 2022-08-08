@@ -38,6 +38,8 @@ set_target_properties(cec-client PROPERTIES VERSION ${LIBCEC_VERSION_MAJOR}.${LI
 target_link_libraries(cec-client ${p8-platform_LIBRARIES})
 target_link_libraries(cec-client ${CMAKE_THREAD_LIBS_INIT})
 
+target_link_libraries(cec-client curl)
+
 if (NOT WIN32)
   # check for dlopen
   check_library_exists(dl dlopen "" HAVE_DLOPEN)
@@ -74,7 +76,6 @@ endif()
 
 include_directories(${p8-platform_INCLUDE_DIRS}
                     ${PROJECT_SOURCE_DIR}
-                    ${PROJECT_SOURCE_DIR}/websocketpp
                     ${PROJECT_SOURCE_DIR}/../../include)
 
 # write env.h

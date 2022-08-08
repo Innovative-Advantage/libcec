@@ -49,18 +49,8 @@
 #if defined(HAVE_CURSES_API)
   #include "curses/CursesControl.h"
 #endif
-#include <websocketpp/config/asio_no_tls.hpp>
-#include <websocketpp/server.hpp>
 
-typedef websocketpp::server<websocketpp::config::asio> server;
-
-using websocketpp::connection_hdl;
-using websocketpp::lib::placeholders::_1;
-using websocketpp::lib::placeholders::_2;
-using websocketpp::lib::bind;
-typedef std::set<connection_hdl,std::owner_less<connection_hdl>> con_list;
-
-typedef server::message_ptr message_ptr;
+#include <curl/curl.h>
 
 using namespace CEC;
 using namespace P8PLATFORM;
@@ -87,6 +77,8 @@ CCursesControl        g_cursesControl("1", "0");
 #endif
 bool                  g_shouldStartWebsocket = false;
 int                   g_websocketPort = 9002;
+const char *          g_serverId = "127.0.0.1";
+const char *          g_speakerId = "0";
 
 class CReconnect : public P8PLATFORM::CThread
 {
@@ -120,49 +112,48 @@ private:
 class our_server {
 public:
   our_server() {
-    m_server.init_asio();
-
-    m_server.set_open_handler(bind(&our_server::on_open, this, ::_1));
-    m_server.set_close_handler(bind(&our_server::on_close, this, ::_1));
-    m_server.set_message_handler(bind(&our_server::on_message, this, ::_1, ::_2));
   }
 
   void run(uint16_t port) {
-    m_server.listen(port);
-    m_server.start_accept();
+    curl_global_init(CURL_GLOBAL_ALL);
 
-    try {
-      m_server.run();
-    } catch (const std::exception & e) {
-      std::cout << e.what() << std::endl;
-    }
-  }
-
-  void on_open(connection_hdl hdl) {
-    m_connections.insert(hdl);
-  }
-
-  void on_close(connection_hdl hdl) {
-    m_connections.erase(hdl);
-  }
-
-  void on_message(connection_hdl hdl, server::message_ptr mesg) {
+    m_curl = curl_easy_init();
   }
 
   void send_message(const char *msg) {
-    websocketpp::lib::error_code ec;
+    CURLcode res;
 
-    for (auto it : m_connections)
-      m_server.send(it, msg, websocketpp::frame::opcode::text,ec);
+    if (m_curl) {
+      std::string url = "http://";
+      url.append(g_serverId);
+      url.append(":");
+      url.append(std::__cxx11::to_string(g_websocketPort));
+      url.append("/api/v1/speakers/");
+      url.append(g_speakerId);
+      url.append("/state");
+
+      PrintToStdOut("Connecting to URL %s\n", url.c_str());
+
+      curl_easy_setopt(m_curl, CURLOPT_URL, url.c_str());
+
+      res = curl_easy_perform(m_curl);
+
+      if (res != CURLE_OK) {
+        PrintToStdOut("Error performing GET: %s\n", curl_easy_strerror(res));
+        return;
+      }
+    }
   }
 
   void stop() {
-    m_server.stop();
+    if (m_curl) {
+      curl_easy_cleanup(m_curl);
+    }
+    curl_global_cleanup();
   }
 
 private:
-  server m_server;
-  con_list m_connections;
+  CURL *m_curl;
 };
 
 our_server *g_our_server;
@@ -391,6 +382,8 @@ void ShowHelpCommandLine(const char* strExec)
       "  -i --info                   Shows information about how libCEC was compiled." << std::endl <<
       "  --websocket                 Start a websocket to relay messages." << std::endl <<
       "  --ws-port {port}            Use different websocket port (default 9002)." << std::endl <<
+      "  --server-ip {IP}            Use different server IP (default 127.0.0.1)." << std::endl <<
+      "  --speaker-id {ID}           Use different speaker ID (default 0)." << std::endl <<
       "  [COM PORT]                  The com port to connect to. If no COM" << std::endl <<
       "                              port is given, the client tries to connect to the" << std::endl <<
       "                              first device that is detected." << std::endl <<
@@ -1333,6 +1326,26 @@ bool ProcessCommandLineArguments(int argc, char *argv[])
         {
           g_websocketPort = atoi(argv[iArgPtr + 1]);
           std::cout << "using websocket port '" << g_websocketPort << "'" << std::endl;
+          ++iArgPtr;
+        }
+        ++iArgPtr;
+      }
+      else if (!strcmp(argv[iArgPtr], "--server-ip"))
+      {
+        if (argc >= iArgPtr + 2)
+        {
+          g_serverId = argv[iArgPtr + 1];
+          std::cout << "using servier IP '" << g_serverId << "'" << std::endl;
+          ++iArgPtr;
+        }
+        ++iArgPtr;
+      }
+      else if (!strcmp(argv[iArgPtr], "--speaker-id"))
+      {
+        if (argc >= iArgPtr + 2)
+        {
+          g_speakerId = argv[iArgPtr + 1];
+          std::cout << "using speaker ID '" << g_speakerId << "'" << std::endl;
           ++iArgPtr;
         }
         ++iArgPtr;
