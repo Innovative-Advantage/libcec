@@ -51,6 +51,9 @@
 #endif
 
 #include <curl/curl.h>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 using namespace CEC;
 using namespace P8PLATFORM;
@@ -141,6 +144,8 @@ public:
   void send_message(const char *msg) {
     CURLcode res;
     std::FILE* tmpfile = std::tmpfile();
+    json data;
+    int volume;
 
     if (m_curl) {
       std::string url = "http://";
@@ -161,9 +166,32 @@ public:
 
       if (res != CURLE_OK) {
         PrintToStdOut("Error performing GET: %s\n", curl_easy_strerror(res));
+        goto out;
       }
+
+      rewind(tmpfile);
+
+      try {
+        data = json::parse(tmpfile);
+      } catch (json::parse_error &e) {
+        PrintToStdOut("Error %s performing JSON parse\n", e.what());
+        goto out;
+      } catch (...) {
+        PrintToStdOut("Unexpected exception while parsing JSON data\n");
+        goto out;
+      }
+
+      try {
+        data["results"][0]["volume"].get_to(volume);
+      } catch (...) {
+        PrintToStdOut("Unexpected exception while getting volume\n");
+        goto out;
+      }
+
+      PrintToStdOut("JSON data volume: %d\n", volume);
     }
 
+out:
     fclose(tmpfile);
   }
 
