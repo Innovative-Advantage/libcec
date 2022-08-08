@@ -120,8 +120,27 @@ public:
     m_curl = curl_easy_init();
   }
 
+  static size_t read_callback(char *ptr, size_t size, size_t nmemb, void *stream) {
+    size_t retcode;
+    unsigned long nread;
+
+    retcode = fread(ptr, size, nmemb, (FILE *)stream);
+    if (retcode > 0) {
+      nread = (unsigned long) retcode;
+    }
+
+    return retcode;
+  }
+
+  static size_t write_callback(void *buffer, size_t size, size_t nmemb, void *stream) {
+    FILE *outfile = (FILE *)stream;
+
+    return fwrite(buffer, size, nmemb, outfile);
+  }
+
   void send_message(const char *msg) {
     CURLcode res;
+    std::FILE* tmpfile = std::tmpfile();
 
     if (m_curl) {
       std::string url = "http://";
@@ -132,17 +151,20 @@ public:
       url.append(g_speakerId);
       url.append("/state");
 
-      PrintToStdOut("Connecting to URL %s\n", url.c_str());
-
+      curl_easy_setopt(m_curl, CURLOPT_READFUNCTION, read_callback);
+      curl_easy_setopt(m_curl, CURLOPT_WRITEFUNCTION, write_callback);
+      curl_easy_setopt(m_curl, CURLOPT_WRITEDATA, tmpfile);
       curl_easy_setopt(m_curl, CURLOPT_URL, url.c_str());
+      curl_easy_setopt(m_curl, CURLOPT_READDATA, tmpfile);
 
       res = curl_easy_perform(m_curl);
 
       if (res != CURLE_OK) {
         PrintToStdOut("Error performing GET: %s\n", curl_easy_strerror(res));
-        return;
       }
     }
+
+    fclose(tmpfile);
   }
 
   void stop() {
