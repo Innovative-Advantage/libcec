@@ -7,3 +7,7 @@
 [submodule "src/dotnet"]
 	path = src/dotnet
 	url = https://github.com/Pulse-Eight/cec-dotnet.git
+[submodule "src/cec-client/json"]
+	path = src/cec-client/json
+	url = https://github.com/nlohmann/json
+    branch = v3.11.1
