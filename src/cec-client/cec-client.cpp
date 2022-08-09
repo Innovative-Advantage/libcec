@@ -60,6 +60,9 @@ using namespace P8PLATFORM;
 
 #include "cecloader.h"
 
+#define VOL_UP_STR      "vol_up"
+#define VOL_DOWN_STR    "vol_down"
+
 static void PrintToStdOut(const char *strFormat, ...);
 
 ICECCallbacks         g_callbacks;
@@ -82,6 +85,7 @@ bool                  g_shouldStartWebsocket = false;
 int                   g_websocketPort = 9002;
 const char *          g_serverId = "127.0.0.1";
 const char *          g_speakerId = "0";
+int                   g_volMax = 100;
 
 class CReconnect : public P8PLATFORM::CThread
 {
@@ -124,15 +128,12 @@ public:
   }
 
   static size_t read_callback(char *ptr, size_t size, size_t nmemb, void *stream) {
-    size_t retcode;
-    unsigned long nread;
+    json *data = (json *) stream;
+    int nRead;
 
-    retcode = fread(ptr, size, nmemb, (FILE *)stream);
-    if (retcode > 0) {
-      nread = (unsigned long) retcode;
-    }
+    nRead = snprintf(ptr, nmemb, "%s", data->dump().c_str());
 
-    return retcode;
+    return nRead;
   }
 
   static size_t write_callback(void *buffer, size_t size, size_t nmemb, void *stream) {
@@ -144,7 +145,6 @@ public:
   void send_message(const char *msg) {
     CURLcode res;
     std::FILE* tmpfile = std::tmpfile();
-    json data;
     int volume;
 
     if (m_curl) {
@@ -156,11 +156,9 @@ public:
       url.append(g_speakerId);
       url.append("/state");
 
-      curl_easy_setopt(m_curl, CURLOPT_READFUNCTION, read_callback);
       curl_easy_setopt(m_curl, CURLOPT_WRITEFUNCTION, write_callback);
       curl_easy_setopt(m_curl, CURLOPT_WRITEDATA, tmpfile);
       curl_easy_setopt(m_curl, CURLOPT_URL, url.c_str());
-      curl_easy_setopt(m_curl, CURLOPT_READDATA, tmpfile);
 
       res = curl_easy_perform(m_curl);
 
@@ -172,7 +170,7 @@ public:
       rewind(tmpfile);
 
       try {
-        data = json::parse(tmpfile);
+        m_data = json::parse(tmpfile);
       } catch (json::parse_error &e) {
         PrintToStdOut("Error %s performing JSON parse\n", e.what());
         goto out;
@@ -182,13 +180,48 @@ public:
       }
 
       try {
-        data["results"][0]["volume"].get_to(volume);
+        m_data["results"][0]["volume"].get_to(volume);
       } catch (...) {
         PrintToStdOut("Unexpected exception while getting volume\n");
         goto out;
       }
 
       PrintToStdOut("JSON data volume: %d\n", volume);
+      if (!strcmp(msg, VOL_UP_STR))
+      {
+        if (volume < g_volMax)
+          volume++;
+      } else if (!strcmp(msg, VOL_DOWN_STR)) {
+        if (volume > 0)
+          volume--;
+      } else {
+        PrintToStdOut("Unexpected message %s\n", msg);
+        goto out;
+      }
+
+      try {
+        m_data["results"][0]["volume"] = volume;
+      } catch (...) {
+        PrintToStdOut("Unexpected exception when setting volume to %d\n", volume);
+        goto out;
+      }
+
+      std::cout << m_data << std::endl;
+      PrintToStdOut("data: %s\n", m_data.dump().c_str());
+
+      int dataLen = strlen(m_data.dump().c_str());
+
+      curl_easy_setopt(m_curl, CURLOPT_READFUNCTION, read_callback);
+      curl_easy_setopt(m_curl, CURLOPT_UPLOAD, 1L);
+      curl_easy_setopt(m_curl, CURLOPT_URL, url.c_str());
+      curl_easy_setopt(m_curl, CURLOPT_READDATA, &m_data);
+      curl_easy_setopt(m_curl, CURLOPT_INFILESIZE, dataLen);
+
+      res = curl_easy_perform(m_curl);
+      if (res != CURLE_OK) {
+        PrintToStdOut("Error perfomring HTTP PUT\n");
+        goto out;
+      }
     }
 
 out:
@@ -204,6 +237,7 @@ out:
 
 private:
   CURL *m_curl;
+  json m_data;
 };
 
 our_server *g_our_server;
@@ -331,10 +365,10 @@ void CecKeyPress(void *UNUSED(cbParam), const cec_keypress* key)
   {
     switch (key->keycode) {
       case CEC_USER_CONTROL_CODE_VOLUME_UP:
-        g_our_server->send_message("vol_up");
+        g_our_server->send_message(VOL_UP_STR);
         break;
       case CEC_USER_CONTROL_CODE_VOLUME_DOWN:
-        g_our_server->send_message("vol_down");
+        g_our_server->send_message(VOL_DOWN_STR);
         break;
       default:
         break;
