@@ -139,7 +139,10 @@ public:
   static size_t write_callback(void *buffer, size_t size, size_t nmemb, void *stream) {
     FILE *outfile = (FILE *)stream;
 
-    return fwrite(buffer, size, nmemb, outfile);
+    if (stream)
+      return fwrite(buffer, size, nmemb, outfile);
+    else
+      return nmemb;
   }
 
   void send_message(const char *msg) {
@@ -161,6 +164,8 @@ public:
       curl_easy_setopt(m_curl, CURLOPT_URL, url.c_str());
 
       res = curl_easy_perform(m_curl);
+
+      curl_easy_setopt(m_curl, CURLOPT_WRITEDATA, NULL);
 
       if (res != CURLE_OK) {
         PrintToStdOut("Error performing GET: %s\n", curl_easy_strerror(res));
