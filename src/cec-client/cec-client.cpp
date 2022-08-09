@@ -363,15 +363,19 @@ void CecKeyPress(void *UNUSED(cbParam), const cec_keypress* key)
 {
   if (g_shouldStartWebsocket)
   {
-    switch (key->keycode) {
-      case CEC_USER_CONTROL_CODE_VOLUME_UP:
-        g_our_server->send_message(VOL_UP_STR);
-        break;
-      case CEC_USER_CONTROL_CODE_VOLUME_DOWN:
-        g_our_server->send_message(VOL_DOWN_STR);
-        break;
-      default:
-        break;
+    // Avoid sending duplicate messages every button press, which happens with a non-zero duration once the press is
+    // complete
+    if (key->duration == 0) {
+      switch (key->keycode) {
+        case CEC_USER_CONTROL_CODE_VOLUME_UP:
+          g_our_server->send_message(VOL_UP_STR);
+          break;
+        case CEC_USER_CONTROL_CODE_VOLUME_DOWN:
+          g_our_server->send_message(VOL_DOWN_STR);
+          break;
+        default:
+          break;
+      }
     }
   }
 }
