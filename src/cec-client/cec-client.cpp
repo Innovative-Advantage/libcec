@@ -230,6 +230,7 @@ public:
     }
 
 out:
+    curl_easy_reset(m_curl);
     fclose(tmpfile);
   }
 
