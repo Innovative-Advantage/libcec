@@ -131,7 +131,7 @@ public:
     json *data = (json *) stream;
     int nRead;
 
-    nRead = snprintf(ptr, nmemb, "%s", data->dump().c_str());
+    nRead = snprintf(ptr, nmemb, "%s", data->dump(4).c_str());
 
     return nRead;
   }
@@ -209,7 +209,7 @@ public:
       std::cout << m_data << std::endl;
       PrintToStdOut("data: %s\n", m_data.dump().c_str());
 
-      int dataLen = strlen(m_data.dump().c_str());
+      int dataLen = strlen(m_data.dump(4).c_str());
 
       curl_easy_setopt(m_curl, CURLOPT_READFUNCTION, read_callback);
       curl_easy_setopt(m_curl, CURLOPT_UPLOAD, 1L);
